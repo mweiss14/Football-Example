@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running load dashboard (sample data)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --paper: #EDF0F2;
+    --panel: #FFFFFF;
+    --ink: #1B2A33;
+    --muted: #5F707A;
+    --pitch: #1E4D36;
+    --z-low: #CBD8D0;
+    --z-run: #8DB7A0;
+    --z-hs: #2F7D5B;
+    --z-sprint: #F0561D;
+    --win: #2E9E5E;
+    --draw: #F29A1F;
+    --loss: #D13A32;
+    --line: #D3DADE;
+    --num: "Bahnschrift", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+    --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body { margin: 0; font-family: var(--body); color: var(--ink); font-size: 15px; line-height: 1.45; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--z-sprint); outline-offset: 2px; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px 48px; }
+
+  /* Header: pitch-green band with centre-circle motif */
+  header.top {
+    background: var(--pitch); color: #fff; position: relative; overflow: hidden;
+  }
+  header.top::before, header.top::after {
+    content: ""; position: absolute; border: 2px solid rgba(255,255,255,.14); border-radius: 50%;
+    width: 130px; height: 130px; right: 80px; top: -40px;
+  }
+  header.top::after { width: 0; height: 0; border-width: 0; border-radius: 0; right: 190px; top: 0; bottom: 0; height: 100%; border-left: 2px solid rgba(255,255,255,.14); }
+  .top-inner { max-width: 1280px; margin: 0 auto; padding: 16px 24px 4px; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; justify-content: space-between; position: relative; z-index: 1; }
+  h1 { margin: 0; font-family: var(--num); font-weight: 700; font-size: 26px; letter-spacing: .01em; line-height: 1.1; }
+
+  .seg { display: inline-flex; background: rgba(255,255,255,.12); border-radius: 8px; padding: 3px; }
+  .seg button { border: 0; background: transparent; color: #E6F0EA; padding: 6px 13px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .seg button[aria-pressed="true"] { background: #fff; color: var(--pitch); font-weight: 600; }
+
+  /* KPI strip: ruled, not boxed */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--panel); border-radius: 10px; margin-top: 20px; }
+  .kpi { padding: 18px 22px; border-left: 1px solid var(--line); }
+  .kpi:first-child { border-left: 0; }
+  .kpi .v { font-family: var(--num); font-size: 38px; font-weight: 700; line-height: 1; }
+  .kpi .v small { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .kpi .l { margin-top: 6px; font-size: 14px; color: var(--ink); }
+  .kpi .s { font-size: 13px; color: var(--muted); }
+
+  [hidden] { display: none !important; }
+  /* Master tabs live in the header band */
+  .tabs { display: flex; gap: 4px; max-width: 1280px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .tabs button { border: 0; background: none; cursor: pointer; padding: 12px 22px 11px; font-family: var(--num); font-size: 20px; font-weight: 700; color: #B5CFC1; border-bottom: 4px solid transparent; }
+  .tabs button:hover { color: #fff; }
+  .tabs button[aria-selected="true"] { color: #fff; border-bottom-color: var(--z-sprint); }
+  .tabs button:focus-visible { outline-color: #fff; outline-offset: -3px; }
+
+  /* Filters belong to each tab */
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center; margin-top: 20px; }
+  .filters .grp { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+  .filters .seg { background: #DCE3E6; }
+  .filters .seg button { color: var(--ink); }
+  .filters .seg button:hover { background: rgba(255,255,255,.55); }
+  .filters .seg button[aria-pressed="true"] { background: var(--pitch); color: #fff; }
+
+  .panel { background: var(--panel); border-radius: 10px; padding: 20px 22px; }
+  .panel h2 { margin: 0 0 4px; font-family: var(--num); font-size: 21px; font-weight: 700; }
+  .panel .hint { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+
+  /* Table */
+  .tbl { width: 100%; border-collapse: collapse; }
+  .tbl th { text-align: left; font-weight: 600; font-size: 13px; color: var(--muted); padding: 0 8px 8px; border-bottom: 2px solid var(--ink); white-space: nowrap; }
+  .tbl th.n, .tbl td.n { text-align: right; }
+  .tbl th button { border: 0; background: none; padding: 0; cursor: pointer; font-weight: 600; font-size: 13px; color: inherit; }
+  .tbl th button:hover { color: var(--ink); }
+  .tbl th[aria-sort] button { color: var(--ink); }
+  .tbl td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; font-variant-numeric: tabular-nums; }
+  .tbl .nm { font-weight: 600; }
+  .dim { color: var(--muted); }
+
+  /* Player panel */
+  .chart-box { position: relative; height: 240px; }
+  .chart-box.tall { height: 310px; }
+  .legend .dash::before { height: 0; width: 18px; background: none; border-radius: 0; border-top: 2px dashed var(--ink); vertical-align: 3px; }
+  .pname { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .pcols { display: grid; grid-template-columns: 3fr 4fr; gap: 6px 18px; }
+  @media (max-width: 900px) { .pcols { grid-template-columns: 1fr; } }
+  .pname h2 { margin: 0; font-size: 19px; }
+  .pname span { color: var(--muted); font-size: 14px; }
+  .pgroup { margin: 4px 0 5px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .pstats { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .pstats.c3 { grid-template-columns: repeat(3, 1fr); }
+  .pstats.c4 { grid-template-columns: repeat(4, 1fr); }
+  .pstats > div { background: var(--panel); padding: 7px 12px; }
+  .pstats .v { font-family: var(--num); font-size: 21px; font-weight: 700; line-height: 1; }
+  .pstats .v small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .pstats .l { margin-top: 2px; font-size: 12px; color: var(--ink); }
+  .pstats .s { font-size: 11px; color: var(--muted); }
+  @media (max-width: 640px) { .pstats.c3, .pstats.c4 { grid-template-columns: 1fr 1fr; } }
+  .empty { padding: 30px 0; color: var(--muted); }
+
+  .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .pick { font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .pick select { font: inherit; font-weight: 600; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 7px 30px 7px 12px; cursor: pointer; }
+
+  footer { margin-top: 22px; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 1000px) {
+      .kpis { grid-template-columns: 1fr 1fr; }
+    .kpi:nth-child(3) { border-left: 0; }
+    .kpi:nth-child(n+3) { border-top: 1px solid var(--line); }
+    header.top::before, header.top::after { display: none; }
+  }
+  @media (max-width: 640px) {
+    .wrap, .top-inner, .tabs { padding-left: 14px; padding-right: 14px; }
+    h1 { font-size: 23px; }
+    .panel { padding: 16px 12px; overflow-x: auto; }
+    .tbl { min-width: 620px; }
+    .chart-box.tall { min-width: 640px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <h1>Riverside FC</h1>
+    </div>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Dashboard views" id="tabs">
+    <button type="button" role="tab" id="tab-team" aria-controls="panel-team" aria-selected="true" data-tab="team">Team totals</button>
+    <button type="button" role="tab" id="tab-players" aria-controls="panel-players" aria-selected="false" tabindex="-1" data-tab="players">Players</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div role="tabpanel" id="panel-team" aria-labelledby="tab-team">
+    <div class="filters" data-view="team"></div>
+    <section class="kpis" id="kpis" aria-label="Squad summary"></section>
+
+    <section class="panel" style="margin-top:20px">
+      <div class="panel-head">
+        <div>
+          <h2 id="teamTitle">Team trend</h2>
+          <p class="hint" id="teamSummary"></p>
+        </div>
+        <label class="pick">Show
+          <select id="statSel"></select>
+        </label>
+      </div>
+      <div class="legend" id="teamLegend" aria-hidden="true">
+        <span style="--c:var(--win)">Win</span>
+        <span style="--c:var(--draw)">Draw</span>
+        <span style="--c:var(--loss)">Loss</span>
+        <span class="dash">12-match average</span>
+      </div>
+      <div class="chart-box tall"><canvas id="teamChart" role="img" aria-label="Team trend across the last 12 matches"></canvas></div>
+      <p class="hint" style="margin:10px 0 0">Each bar is the combined total for every player selected. The result is shown under each opponent, with our goals first.</p>
+    </section>
+  </div>
+
+  <div role="tabpanel" id="panel-players" aria-labelledby="tab-players" hidden>
+    <div class="filters" data-view="players"></div>
+    <section class="panel" id="profile" style="margin-top:20px; padding-top:12px; padding-bottom:12px" hidden></section>
+
+    <section class="panel" id="playerChartPanel" style="margin-top:20px" hidden>
+      <div class="panel-head">
+        <div>
+          <h2 id="playerChartTitle"></h2>
+          <p class="hint" id="playerChartSummary"></p>
+        </div>
+        <label class="pick">Show
+          <select id="playerStatSel"></select>
+        </label>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span style="--c:var(--win)">Win</span>
+        <span style="--c:var(--draw)">Draw</span>
+        <span style="--c:var(--loss)">Loss</span>
+        <span class="dash">Average in matches played</span>
+      </div>
+      <div class="chart-box tall"><canvas id="playerChart" role="img" aria-label="Player figures across the last 12 matches"></canvas></div>
+      <p class="hint" style="margin:10px 0 0">Colours show the team's result in each match, with our goals first. A gap means the player did not play.</p>
+    </section>
+
+    <section class="panel" id="squadPanel" style="margin-top:20px">
+      <h2>Players</h2>
+      <p class="hint">Mins are total minutes played. Starts and subs count appearances in the 12 matches (subs means coming on from the bench). Distance, HSR and sprints are averages per 90 minutes. HSR is high speed running above 19.8 km/h. Top km/h is the fastest speed reached in any match. Select a column heading to sort.</p>
+      <table class="tbl" id="tbl">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <footer>Sample data: all figures and results are made up. Speed zones follow common GPS conventions: high speed running starts at 19.8 km/h and sprinting at 25.2 km/h. Your tracking provider may use different thresholds.</footer>
+</main>
+
+<script>
+/* ============================================================
+   1. SAMPLE DATA GENERATOR
+   Replace this section with your real data later. The rest of the
+   dashboard only needs MATCHES and PLAYERS (with a `games` array).
+   ============================================================ */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd = mulberry32(2026);
+const between = (a,b)=>a+(b-a)*rnd();
+
+const MATCHES = [
+  {opp:'Harbour Utd',   ha:'H', f:1.00, gf:2, ga:1},
+  {opp:'Northgate',     ha:'A', f:1.03, gf:1, ga:1},
+  {opp:'Eastfield',     ha:'H', f:0.96, gf:3, ga:0},
+  {opp:'Castle Rovers', ha:'A', f:1.05, gf:0, ga:2},
+  {opp:'Millbrook',     ha:'H', f:0.98, gf:2, ga:0},
+  {opp:'Westbury',      ha:'A', f:1.02, gf:1, ga:1},
+  {opp:'Ashford Town',  ha:'H', f:1.04, gf:4, ga:1},
+  {opp:'Kingsmead',     ha:'A', f:0.99, gf:1, ga:2},
+  {opp:'Redhill',       ha:'H', f:1.01, gf:2, ga:2},
+  {opp:'Dunmore',       ha:'A', f:1.06, gf:0, ga:1},
+  {opp:'St Albans Rd',  ha:'H', f:0.97, gf:3, ga:1},
+  {opp:'Fairview',      ha:'A', f:1.02, gf:2, ga:0}
+];
+
+// base per-90 values by position: distance (m), high speed incl. sprint (m), sprints (count)
+const BASE = {
+  GK:  {d:5600,  h:40,  s:1},
+  DEF: {d:10100, h:540, s:15},
+  MID: {d:11200, h:760, s:21},
+  FWD: {d:10500, h:880, s:27}
+};
+
+// role: S = starter, B = bench, G2 = second keeper. wide = wing-back or winger.
+const ROSTER = [
+  ['Tom Becker','GK','S'],   ['Luis Ortega','GK','G2'],
+  ['Marcus Ade','DEF','S'], ['Jonah Reyes','DEF','S'], ['Kofi Mensah','DEF','S'],
+  ['Sam Okoro','DEF','S',true], ['Dan Whitlock','DEF','B'], ['Ivo Petrov','DEF','B'],
+  ['Eli Navarro','MID','S'], ['Callum Reid','MID','S'], ['Yusuf Demir','MID','S',true],
+  ['Theo Lindgren','MID','S'], ['Ravi Anand','MID','B'], ['Mateo Silva','MID','B'],
+  ['Jamal Brooks','FWD','S',true], ['Niko Varga','FWD','S'], ['Owen Hale','FWD','B'], ['Ben Adeyemi','FWD','B']
+];
+
+const PLAYERS = ROSTER.map(([name,pos,role,wide],idx)=>{
+  const fit = between(0.93,1.07);
+  const topBase = pos==='GK' ? between(26.5,28.5) : between(30.2,35.2);
+  const games = MATCHES.map((m,mi)=>{
+    let min = 0, start = false;
+    if (role==='S'){
+      if (rnd()<0.97){ start = true; min = rnd()<0.3 ? Math.round(between(58,86)) : 90; }
+      else { min = rnd()<0.5 ? Math.round(between(15,40)) : 0; }
+    }
+    if (role==='B') min = rnd()<0.55 ? Math.round(between(12,45)) : 0;
+    if (role==='G2'){ min = mi===3 ? 90 : 0; start = min>0; }
+    if (pos==='GK' && role==='S'){ min = 90; start = true; }
+    if (min===0) return null;
+    const b = BASE[pos];
+    const wideBoost = wide ? 1.22 : 1;
+    const shortBoost = min<50 ? 1.04 : 1;          // subs run harder per minute
+    const k = fit*m.f*shortBoost*between(0.94,1.06);
+    const dist = b.d*k*min/90;
+    const sprintN = b.s*wideBoost*k*between(.85,1.15)*min/90;
+    const sprintD = sprintN*between(17,26);
+    const hsr = Math.max(b.h*wideBoost*k*between(.88,1.12)*min/90, sprintD*1.25);
+    const hs = hsr - sprintD;
+    const run = dist*between(0.10,0.125);
+    return {min, start, dist, run, hs, sprintD, sprintN, top: topBase+between(-1.2,0.9)};
+  });
+  return {id:idx, name, pos, games};
+});
+
+/* ============================================================
+   2. HELPERS
+   ============================================================ */
+const POSITIONS = [{key:'ALL',label:'All'},{key:'GK',label:'GK'},{key:'DEF',label:'DEF'},{key:'MID',label:'MID'},{key:'FWD',label:'FWD'}];
+const state = {sort:{key:'dist', dir:-1}};
+
+const RESULT = {W:{word:'Won', col:'--win'}, D:{word:'Drew', col:'--draw'}, L:{word:'Lost', col:'--loss'}};
+const resultOf = m => { const r = m.gf>m.ga ? 'W' : m.gf<m.ga ? 'L' : 'D'; return {r, short:`${r} ${m.gf}-${m.ga}`, text:`${RESULT[r].word} ${m.gf}-${m.ga}`}; };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const surname = n => n.split(' ').slice(1).join(' ');
+const fmt = (v,d=1)=> v==null ? '–' : v.toFixed(d);
+
+function matchIdx(){ return MATCHES.map((_,i)=>i); }   // every match, on every tab
+
+// aggregate one player over a list of match indexes, returning per-90 figures
+function agg(p, idxs){
+  const gs = idxs.map(i=>p.games[i]).filter(Boolean);
+  if (!gs.length) return null;
+  const sum = k => gs.reduce((a,g)=>a+g[k],0);
+  const min = sum('min');
+  const per90 = v => v/min*90;
+  const dist = sum('dist'), run = sum('run'), hs = sum('hs'), sd = sum('sprintD');
+  return {
+    n: gs.length, min,
+    starts: gs.filter(g=>g.start).length,
+    subs: gs.filter(g=>!g.start).length,
+    dist: per90(dist)/1000,
+    hsr: per90(hs+sd),
+    sprints: per90(sum('sprintN')),
+    top: Math.max(...gs.map(g=>g.top)),
+    zones: {low: per90(Math.max(dist-run-hs-sd,0)), run: per90(run), hs: per90(hs), sprint: per90(sd)}
+  };
+}
+
+function visiblePlayers(){
+  const idxs = matchIdx();
+  return PLAYERS
+    .filter(p => V().pos==='ALL' || p.pos===V().pos)
+    .filter(p => !V().player || V().player==='ALL' || String(p.id)===V().player)
+    .map(p => ({p, a: agg(p, idxs)}));
+}
+
+/* ============================================================
+   3. RENDER
+   ============================================================ */
+function renderFilters(){
+  document.querySelectorAll('.filters[data-view=team]').forEach(el=>{
+    const view = el.dataset.view;
+    el.innerHTML = '';
+    [['Position', POSITIONS, 'pos']].forEach(([label, items, key])=>{
+      const grp = document.createElement('div'); grp.className = 'grp';
+      const lab = document.createElement('span'); lab.textContent = label; lab.id = `lbl-${view}-${key}`;
+      const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role','group'); seg.setAttribute('aria-labelledby', lab.id);
+      items.forEach(it=>{
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = it.label;
+        b.setAttribute('aria-pressed', String(state.views[view][key]===it.key));
+        b.onclick = ()=>{
+          state.views[view][key] = it.key;
+          render();
+        };
+        seg.appendChild(b);
+      });
+      grp.append(lab, seg);
+      el.appendChild(grp);
+    });
+  });
+}
+
+function renderKpis(){
+  const n = MATCHES.length;
+  const games = [];
+  PLAYERS.filter(p=>V().pos==='ALL'||p.pos===V().pos).forEach(p=>p.games.forEach((g,i)=>{ if (g) games.push({p,g,i}); }));
+  const sum = f=>games.reduce((t,x)=>t+f(x.g),0);
+  const dist = sum(g=>g.dist)/1000, hsr = sum(g=>g.hs+g.sprintD), spr = sum(g=>g.sprintN);
+  const fastest = games.reduce((a,b)=>b.g.top>a.g.top?b:a, games[0]);
+  const num = (v,d=0)=>v.toLocaleString(undefined,{maximumFractionDigits:d, minimumFractionDigits:d});
+  const topSeries = teamSeries('top').filter(Boolean);
+  const avgTop = topSeries.reduce((t,x)=>t+x.v,0)/topSeries.length;
+  const m = MATCHES[fastest.i];
+  const items = [
+    {v:num(dist/n,1), u:'km', l:'Average distance per match', s:`${num(dist)} km in total over ${n} matches`},
+    {v:num(hsr/n), u:'m', l:'Average high speed running per match', s:`${num(hsr)} m in total over ${n} matches`},
+    {v:num(spr/n,1), u:'', l:'Average sprints per match', s:`${num(spr)} in total over ${n} matches`},
+    {v:num(avgTop,1), u:'km/h', l:'Average top speed per match', s:`Fastest: ${num(fastest.g.top,1)} km/h, ${surname(fastest.p.name)} ${m.ha==='H'?'vs':'at'} ${m.opp}`}
+  ];
+  document.getElementById('kpis').innerHTML = items.map(i=>
+    `<div class="kpi"><div class="v">${i.v}<small>${i.u}</small></div><div class="l">${i.l}</div><div class="s">${i.s}</div></div>`).join('');
+}
+
+const COLS = [
+  {key:'name',    label:'Name'},
+  {key:'pos',     label:'Position'},
+  {key:'min',     label:'Mins',              n:true, d:0, count:true},
+  {key:'starts',  label:'Starts',            n:true, d:0, count:true},
+  {key:'subs',    label:'Subs',              n:true, d:0, count:true},
+  {key:'dist',    label:'Avg distance (km)', n:true, d:1},
+  {key:'hsr',     label:'Avg HSR (m)',       n:true, d:0},
+  {key:'sprints', label:'Avg sprints',       n:true, d:1},
+  {key:'top',     label:'Top km/h',          n:true, d:1}
+];
+
+function renderTable(rows){
+  const {key, dir} = state.sort;
+  const isCount = COLS.find(c=>c.key===key)?.count;
+  const val = r => key==='name' ? r.p.name : key==='pos' ? r.p.pos : (r.a ? r.a[key] : (isCount ? 0 : -Infinity));
+  const sorted = rows.slice().sort((x,y)=>{
+    const a=val(x), b=val(y);
+    return (typeof a==='string' ? a.localeCompare(b) : a-b)*dir;
+  });
+
+  document.querySelector('#tbl thead').innerHTML = '<tr>' + COLS.map(c=>{
+    const on = key===c.key;
+    return `<th class="${c.n?'n':''}" ${on?`aria-sort="${dir<0?'descending':'ascending'}"`:''}><button type="button" data-k="${c.key}">${c.label}${on ? (dir<0?' ▼':' ▲') : ''}</button></th>`;
+  }).join('') + '</tr>';
+  document.querySelectorAll('#tbl thead button').forEach(b=>{
+    b.onclick = ()=>{
+      const k = b.dataset.k;
+      state.sort = {key:k, dir: state.sort.key===k ? -state.sort.dir : (k==='name'||k==='pos' ? 1 : -1)};
+      render();
+    };
+  });
+
+  document.querySelector('#tbl tbody').innerHTML = sorted.map(r=>{
+    const cells = COLS.slice(2).map(c=>`<td class="n">${r.a ? fmt(r.a[c.key], c.d) : (c.count ? '0' : '–')}</td>`).join('');
+    return `<tr><td class="nm">${r.p.name}</td><td class="dim">${r.p.pos}</td>${cells}</tr>`;
+  }).join('');
+}
+
+/* ---------- charts ---------- */
+let teamChart, playerChart;
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const STATS = {
+  dist:    {label:'Distance covered',  unit:'km',   d:1, mode:'sum', get:g=>g.dist/1000},
+  hsr:     {label:'High speed running', unit:'m',    d:0, mode:'sum', get:g=>g.hs+g.sprintD},
+  sprints: {label:'Sprints',            unit:'',     d:0, mode:'sum', get:g=>g.sprintN},
+  top:     {label:'Top speed',          unit:'km/h', d:1, mode:'max'}
+};
+state.stat = 'dist';
+state.pstat = 'dist';
+state.tab = 'team';
+// each tab keeps its own filters
+state.views = {team:{pos:'ALL'}, players:{pos:'ALL', player:'ALL'}};
+const V = ()=>state.views[state.tab];
+
+function teamSeries(key){
+  const s = STATS[key];
+  return MATCHES.map((_,i)=>{
+    const gs = PLAYERS.filter(p=>(V().pos==='ALL'||p.pos===V().pos) && p.games[i]).map(p=>({p,g:p.games[i]}));
+    if (!gs.length) return null;
+    if (s.mode==='max'){
+      const best = gs.reduce((a,b)=>b.g.top>a.g.top?b:a);
+      return {v:best.g.top, who:best.p.name};
+    }
+    return {v: gs.reduce((t,x)=>t+s.get(x.g),0)};
+  });
+}
+
+// Shared by the team chart and the single-player chart.
+// vals: one number (or null) per match. notes: optional extra tooltip line per match.
+function makeMatchChart(canvas, old, st, vals, opts={}){
+  const isMax = st.mode==='max';
+  const valid = vals.filter(v=>v!=null);
+  const avg = valid.reduce((a,b)=>a+b,0)/valid.length;
+  const resCols = MATCHES.map(m=>css(RESULT[resultOf(m).r].col));
+  const main = isMax
+    ? {type:'line', label:`${st.label} (${st.unit})`, data:vals, borderColor:css('--muted'), backgroundColor:resCols,
+       borderWidth:2, tension:.2, pointRadius:7, pointHoverRadius:8, pointBackgroundColor:resCols, pointBorderColor:'#fff', pointBorderWidth:2, order:1, spanGaps:true}
+    : {type:'bar', label:`${st.label}${st.unit?` (${st.unit})`:''}`, data:vals, borderRadius:3,
+       backgroundColor:resCols, order:2};
+  const avgLine = {type:'line', label:opts.avgLabel||'Average', data:vals.map(()=>+avg.toFixed(st.d+1)), borderColor:css('--ink'),
+       borderDash:[6,5], borderWidth:1.5, pointRadius:0, pointHoverRadius:0, order:0};
+  if (old) old.destroy();
+  return new Chart(canvas, {
+    data:{labels: MATCHES.map(m=>[...m.opp.split(' '), resultOf(m).short]), datasets:[main, avgLine]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation: reduce ? false : {duration:400},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title: items => {
+            const i = items[0].dataIndex, m = MATCHES[i];
+            const t = [`${m.ha==='H'?'vs':'at'} ${m.opp}`, resultOf(m).text];
+            if (opts.unplayed && vals[i]==null) t.push('Did not play');
+            return t;
+          },
+          afterLabel: ctx => (isMax && opts.who && ctx.datasetIndex===0 && opts.who[ctx.dataIndex]) ? `Set by ${opts.who[ctx.dataIndex]}` : ''
+        }}
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{autoSkip:false, maxRotation:0, minRotation:0, font:{size:11}}},
+        y:{title:{display:true, text:st.unit || 'count'}, grid:{color:css('--line')},
+           beginAtZero: !isMax, ...(isMax ? {suggestedMin: Math.floor(Math.min(...valid))-2} : {})}
+      }
+    }
+  });
+}
+
+function renderTeamChart(){
+  const st = STATS[state.stat];
+  const ser = teamSeries(state.stat);
+  const vals = ser.map(x=>x ? +x.v.toFixed(st.d) : null);
+  const valid = vals.filter(v=>v!=null);
+  const avg = valid.reduce((a,b)=>a+b,0)/valid.length;
+  const posLabel = V().pos==='ALL' ? 'Whole squad' : ({GK:'Goalkeepers',DEF:'Defenders',MID:'Midfielders',FWD:'Forwards'})[V().pos];
+  document.getElementById('teamTitle').textContent = st.mode==='max' ? `${posLabel}: fastest speed per match` : `${posLabel}: total ${st.label.toLowerCase()} per match`;
+  document.getElementById('statSel').value = state.stat;
+
+  // summary line: latest match vs 12-match average
+  const last = vals[vals.length-1];
+  const diff = (last-avg)/avg*100;
+  const u = st.unit ? ' '+st.unit : '';
+  document.getElementById('teamSummary').textContent =
+    `Latest match: ${last.toLocaleString(undefined,{maximumFractionDigits:st.d})}${u}, ${diff>=0?'+':''}${diff.toFixed(1)}% vs the 12-match average of ${avg.toLocaleString(undefined,{maximumFractionDigits:st.d})}${u}.`;
+
+  teamChart = makeMatchChart(document.getElementById('teamChart'), teamChart, st, vals, {avgLabel:'12-match average', who: ser.map(x=>x&&x.who)});
+}
+
+// the same chart for one player: their own figure in each match (gaps = did not play)
+function renderPlayerChart(p){
+  const st = STATS[state.pstat];
+  const vals = p.games.map(g=> g ? +(st.mode==='max' ? g.top : st.get(g)).toFixed(st.d) : null);
+  const valid = vals.filter(v=>v!=null);
+  const avg = valid.reduce((a,b)=>a+b,0)/valid.length;
+  const u = st.unit ? ' '+st.unit : '';
+  const fmtv = v=>v.toLocaleString(undefined,{maximumFractionDigits:st.d});
+  document.getElementById('playerChartTitle').textContent = st.mode==='max' ? `${p.name}: top speed per match` : `${p.name}: ${st.label.toLowerCase()} per match`;
+  document.getElementById('playerStatSel').value = state.pstat;
+  document.getElementById('playerChartSummary').textContent =
+    `Played ${valid.length} of ${MATCHES.length} matches. Average of ${fmtv(avg)}${u} in the matches played.`;
+  playerChart = makeMatchChart(document.getElementById('playerChart'), playerChart, st, vals, {avgLabel:'Average in matches played', unplayed:true});
+}
+
+const POS_WORD = {GK:'Goalkeeper', DEF:'Defender', MID:'Midfielder', FWD:'Forward'};
+function renderProfile(row){
+  const {p, a} = row;
+  const n = (v,d)=> a ? v.toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d}) : '–';
+  const tile = (v,u,l,sub)=>`<div><div class="v">${v}<small>${u}</small></div><div class="l">${l}</div>${sub?`<div class="s">${sub}</div>`:''}</div>`;
+  document.getElementById('profile').innerHTML = `
+    <div class="pname"><h2>${p.name}</h2><span>${POS_WORD[p.pos]}</span></div>
+    <div class="pcols"><div>
+    <div class="pgroup">Appearances, last ${MATCHES.length} matches</div>
+    <div class="pstats c3">
+      ${tile(n(a&&a.min,0),'','Mins','minutes played')}
+      ${tile(n(a&&a.starts,0),'','Starts','in the starting eleven')}
+      ${tile(n(a&&a.subs,0),'','Subs','came on from the bench')}
+    </div>
+    </div><div>
+    <div class="pgroup">Running</div>
+    <div class="pstats c4">
+      ${tile(n(a&&a.dist,1),'km','Avg distance','per 90 minutes')}
+      ${tile(n(a&&a.hsr,0),'m','Avg HSR','per 90 minutes')}
+      ${tile(n(a&&a.sprints,1),'','Avg sprints','per 90 minutes')}
+      ${tile(n(a&&a.top,1),'km/h','Top speed','fastest in any match')}
+    </div></div></div>`;
+}
+
+function renderTabs(){
+  document.querySelectorAll('#tabs [role=tab]').forEach(t=>{
+    const on = t.dataset.tab===state.tab;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+  });
+  document.getElementById('panel-team').hidden = state.tab!=='team';
+  document.getElementById('panel-players').hidden = state.tab!=='players';
+}
+
+function render(){
+  renderFilters();
+  renderTabs();
+  const rows = visiblePlayers();
+  // charts are only drawn for the visible tab, because hidden canvases have no size
+  if (state.tab==='team'){
+    renderKpis();
+    renderTeamChart();
+  } else {
+    const single = V().player && V().player!=='ALL';
+    document.getElementById('profile').hidden = !single;
+    document.getElementById('squadPanel').hidden = single;
+    document.getElementById('playerChartPanel').hidden = !single;
+    if (single){ renderProfile(rows[0]); renderPlayerChart(rows[0].p); } else renderTable(rows);
+  }
+}
+
+const tabEls = [...document.querySelectorAll('#tabs [role=tab]')];
+tabEls.forEach((t,i)=>{
+  t.onclick = ()=>{ state.tab = t.dataset.tab; render(); };
+  t.onkeydown = e=>{
+    if (e.key==='ArrowRight' || e.key==='ArrowLeft'){
+      const next = tabEls[(i + (e.key==='ArrowRight'?1:-1) + tabEls.length) % tabEls.length];
+      state.tab = next.dataset.tab; render(); next.focus();
+    }
+  };
+});
+// player dropdown on the Players tab, built once so it keeps keyboard focus
+(function(){
+  const el = document.querySelector('.filters[data-view=players]');
+  const groups = [['GK','Goalkeepers'],['DEF','Defenders'],['MID','Midfielders'],['FWD','Forwards']];
+  const opts = groups.map(([k,label])=>
+    `<optgroup label="${label}">` + PLAYERS.filter(p=>p.pos===k).map(p=>`<option value="${p.id}">${p.name}</option>`).join('') + '</optgroup>').join('');
+  el.innerHTML = `<label class="pick">Player <select id="playerSel"><option value="ALL">All players</option>${opts}</select></label>`;
+  el.querySelector('select').onchange = e=>{ state.views.players.player = e.target.value; render(); };
+})();
+const sel = document.getElementById('statSel');
+sel.innerHTML = Object.entries(STATS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
+sel.onchange = ()=>{ state.stat = sel.value; renderTeamChart(); };
+const psel = document.getElementById('playerStatSel');
+psel.innerHTML = sel.innerHTML;
+psel.onchange = ()=>{ state.pstat = psel.value; render(); };
+render();
+</script>
+</body>
+</html>
